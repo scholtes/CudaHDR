@@ -10,13 +10,30 @@
 
 // Number of threads per block (1-d blocks)
 #define BLOCK_WIDTH 8
+// Functions to reduce with
+#define ADD 0
+#define MIN 1
+#define MAX 2
+// Device functions
+
+__device__ float addOp(float a, float b) {
+  return a + b;
+}
+
+__device__ float minOp(float a, float b) {
+  return a < b ? a : b;
+}
+
+__device__ float maxOp(float a, float b) {
+  return a > b ? a : b;
+}
 
 // Perform a partial reduction 
 // Only reduces per block, so this kernel may need to be called
 // multiple times to generate a complete reduction
 __global__ void reduceKernel(float* array,
                        const size_t array_size,
-                       float (*op)(float, float))
+                       unsigned int op)
 {
   __shared__ float temp[BLOCK_WIDTH];
   int bx = blockIdx.x;
@@ -32,7 +49,19 @@ __global__ void reduceKernel(float* array,
   // Reduce
   for(int offset = BLOCK_WIDTH >> 1; offset > 0; offset >>= 1) {
     if(tx < offset) {
-      temp[tx] = (*op)(temp[tx], temp[tx + offset]);
+        switch(op) {
+        case ADD:
+          temp[tx] = addOp(temp[tx], temp[tx + offset]);
+          break;
+        case MIN:
+          temp[tx] = minOp(temp[tx], temp[tx + offset]);
+          break;
+        case MAX:
+          temp[tx] = maxOp(temp[tx], temp[tx + offset]);
+          break;
+        default:
+          break;
+        }
     }
     __syncthreads();
   }
@@ -53,24 +82,10 @@ __global__ void scanKernel() {
 
 }
 
-__device__ float addOp(float a, float b) {
-  return a + b;
-}
-
-__device__ float minOp(float a, float b) {
-  return a < b ? a : b;
-}
-
-__device__ float maxOp(float a, float b) {
-  return a > b ? a : b;
-}
-
-// Non-kernel (host) functions
-
 void reduce(float* d_array,
             const size_t array_size,
             float* result,
-            float (*op)(float, float))
+            unsigned int op)
 {
   float *d_array_copy;
   size_t mem_size = sizeof(float) * array_size;
@@ -131,9 +146,9 @@ int main(int argc, char** argv) {
   prettyprint(h_array, TEST_SIZE);
 
   // Perform reduce
-  reduce(d_array, TEST_SIZE, &reduce_result_add, addOp);
-  reduce(d_array, TEST_SIZE, &reduce_result_min, minOp);
-  reduce(d_array, TEST_SIZE, &reduce_result_max, maxOp);
+  reduce(d_array, TEST_SIZE, &reduce_result_add, ADD);
+  reduce(d_array, TEST_SIZE, &reduce_result_min, MIN);
+  reduce(d_array, TEST_SIZE, &reduce_result_max, MAX);
   printf("reduce_result_add = %0.1f\n", reduce_result_add);
   printf("reduce_result_min = %0.1f\n", reduce_result_min);
   printf("reduce_result_max = %0.1f\n", reduce_result_max);
