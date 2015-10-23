@@ -2,14 +2,14 @@
 #include <stdio.h>
 
 // Number of elements to put in the test array
-#define TEST_SIZE 32
+#define TEST_SIZE (1024*1024)
 
 ////////////////////////////////////////////////////////////////
 ////////////////// COPY EVERYTHING BELOW HERE //////////////////
 ////////////////////////////////////////////////////////////////
 
 // Number of threads per block (1-d blocks)
-#define BLOCK_WIDTH 8
+#define BLOCK_WIDTH 1024
 // Functions to reduce with
 #define ADD 0
 #define MIN 1
@@ -33,7 +33,8 @@ __device__ float maxOp(float a, float b) {
 // multiple times to generate a complete reduction
 __global__ void reduceKernel(float* array,
                        const size_t array_size,
-                       unsigned int op)
+                       const unsigned int op,
+                       const size_t step)
 {
   __shared__ float temp[BLOCK_WIDTH];
   int bx = blockIdx.x;
@@ -41,7 +42,7 @@ __global__ void reduceKernel(float* array,
   int index = BLOCK_WIDTH * bx + tx;
 
   if(index < array_size) {
-    temp[tx] = array[index];
+    temp[tx] = array[index * step];
   }
 
   __syncthreads();
@@ -92,8 +93,12 @@ void reduce(float* d_array,
   cudaMalloc((void**) &d_array_copy, mem_size);
   cudaMemcpy(d_array_copy, d_array, mem_size, cudaMemcpyDeviceToDevice);
 
+  // First pass: 
   size_t numBlocks = 1 + ((array_size - 1) / BLOCK_WIDTH);
-  reduceKernel<<<numBlocks, BLOCK_WIDTH>>>(d_array_copy, array_size, op);
+  reduceKernel<<<numBlocks, BLOCK_WIDTH>>>(d_array_copy, array_size, op, 1);
+  // Second pass:
+  reduceKernel<<<1, BLOCK_WIDTH>>>(d_array_copy, array_size, op, BLOCK_WIDTH);
+
 
   cudaMemcpy(result, d_array_copy, sizeof(float), cudaMemcpyDeviceToHost);
   cudaFree(d_array_copy);
