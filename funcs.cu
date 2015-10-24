@@ -147,6 +147,13 @@ void histogram(unsigned int** d_hist,
   );
 }
 
+void scan(unsigned int** d_cdf,
+          unsigned int* d_input,
+          const size_t array_size)
+{
+  cudaMalloc((void**) d_cdf, sizeof(unsigned int) * array_size);
+}
+
 ////////////////////////////////////////////////////////////////
 //////////////// EXCLUDE EVERYTHING BELOW HERE /////////////////
 ////////////////////////////////////////////////////////////////
@@ -154,6 +161,18 @@ void histogram(unsigned int** d_hist,
 void generateAndCopyTestValues(float** h_A, float** d_A, size_t size) {
   unsigned int mem_size = sizeof(float) * size;
   *h_A = (float*)malloc(mem_size);
+  cudaMalloc((void**) d_A, mem_size);
+
+  for(int i = 0; i < size; i++) {
+    (*h_A)[i] = i+1;
+  }
+
+  cudaMemcpy(*d_A, *h_A, mem_size, cudaMemcpyHostToDevice);
+}
+
+void genTestValsCDF(unsigned int** h_A, unsigned int** d_A, size_t size) {
+  unsigned int mem_size = sizeof(unsigned int) * size;
+  *h_A = (unsigned int*)malloc(mem_size);
   cudaMalloc((void**) d_A, mem_size);
 
   for(int i = 0; i < size; i++) {
@@ -210,6 +229,11 @@ int main(int argc, char** argv) {
   unsigned int *h_hist;
   unsigned int *d_hist;
   size_t numBins = NUM_BINS;
+  // CDF (exclusive scan - prefix sum)
+  unsigned int *h_toBeScanned;
+  unsigned int *d_toBeScanned;
+  unsigned int *h_cdf;
+  unsigned int *d_cdf;
   
   generateAndCopyTestValues(&h_array, &d_array, TEST_SIZE);
 
@@ -232,11 +256,27 @@ int main(int argc, char** argv) {
   printf("h_hist = ");
   prettyprint(h_hist, numBins);
 
+  // Set up and perform exclusive scan
+  genTestValsCDF(&h_toBeScanned, &d_toBeScanned, TEST_SIZE);
+
+  printf("\nh_toBeScanned = ");
+  prettyprint(h_toBeScanned, TEST_SIZE);
+
+  scan(&d_cdf, d_toBeScanned, TEST_SIZE);
+  h_cdf = (unsigned int*)malloc(sizeof(unsigned int) * TEST_SIZE);
+  cudaMemcpy(h_cdf, d_cdf, sizeof(unsigned int) * TEST_SIZE, cudaMemcpyDeviceToHost);
+  printf("h_cdf = ");
+  prettyprint(h_cdf, TEST_SIZE);
+
 
   // Clean up
   free(h_array);
   free(h_hist);
+  free(h_cdf);
+  free(h_toBeScanned);
   cudaFree(d_array);
   cudaFree(d_hist);
+  cudaFree(d_cdf);
+  cudaFree(d_toBeScanned);
   return 0;
 }
