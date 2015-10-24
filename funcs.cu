@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 // Number of elements to put in the test array
-#define TEST_SIZE (1024*1024)
+#define TEST_SIZE 64
 #define NUM_BINS 10
 
 ////////////////////////////////////////////////////////////////
@@ -10,7 +10,7 @@
 ////////////////////////////////////////////////////////////////
 
 // Number of threads per block (1-d blocks)
-#define BLOCK_WIDTH 1024
+#define BLOCK_WIDTH 8
 // Functions to reduce with
 #define ADD 0
 #define MIN 1
@@ -75,7 +75,7 @@ __global__ void reduceKernel(float* array,
 }
 
 // Create a histogram with atomics
-__global__ void histogramKernel(float* d_hist,
+__global__ void histogramKernel(unsigned int* d_hist,
                                 const float* const d_array,
                                 const size_t array_size,
                                 float max,
@@ -127,14 +127,14 @@ void reduce(float* d_array,
 }
 
 //d_hist, d_array, TEST_SIZE, reduce_result_max, reduce_result_min, numBins
-void histogram(float** d_hist,
+void histogram(unsigned int** d_hist,
                const float* const d_array,
                const size_t array_size,
                float max,
                float min,
                const size_t numBins)
 {
-  cudaMalloc((void**) d_hist, sizeof(float) * numBins);
+  cudaMalloc((void**) d_hist, sizeof(unsigned int) * numBins);
 
   size_t numBlocks = 1 + ((array_size - 1) / BLOCK_WIDTH);
   histogramKernel<<<numBlocks, BLOCK_WIDTH>>>(
@@ -181,6 +181,24 @@ void prettyprint(float *h_A, size_t size) {
   printf("\n");
 }
 
+void prettyprint(unsigned int *h_A, size_t size) {
+  // Lots of magic numbers
+  if(size <= 16) {
+    for(int i = 0; i < size; i++) {
+      printf("%d ", h_A[i]);
+    }
+  } else {
+    for(int i = 0; i < 8; i++) {
+      printf("%d ", h_A[i]);
+    }
+    printf("... ");
+    for(int i = 0; i < 8; i++) {
+      printf("%d ", h_A[size +i -8]);
+    }
+  }
+  printf("\n");
+}
+
 int main(int argc, char** argv) {
   // Reduce
   float *h_array;
@@ -189,8 +207,8 @@ int main(int argc, char** argv) {
   float reduce_result_max;
   float reduce_result_min;
   // Histogram
-  float *h_hist;
-  float *d_hist;
+  unsigned int *h_hist;
+  unsigned int *d_hist;
   size_t numBins = NUM_BINS;
   
   generateAndCopyTestValues(&h_array, &d_array, TEST_SIZE);
@@ -209,8 +227,9 @@ int main(int argc, char** argv) {
   // Perform histogram
   histogram(&d_hist, d_array, TEST_SIZE, reduce_result_max, reduce_result_min, numBins);
   // Host histogram (not to be used in student_func)
-  h_hist = (float*)malloc(sizeof(float) * numBins);
-  cudaMemcpy(h_hist, d_hist, sizeof(float) * numBins, cudaMemcpyDeviceToHost);
+  h_hist = (unsigned int*)malloc(sizeof(unsigned int) * numBins);
+  cudaMemcpy(h_hist, d_hist, sizeof(unsigned int) * numBins, cudaMemcpyDeviceToHost);
+  printf("h_hist = ");
   prettyprint(h_hist, numBins);
 
 
